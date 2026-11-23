@@ -1,0 +1,2290 @@
+openapi: 3.0.3
+info:
+  title: IABS-SIP Pena Justa API
+  description: |
+    Especificacao REST API para integracao do sistema IABS-SIP com o programa Pena Justa (CNJ).
+    
+    ## Eixos Estrategicos
+    1. Gestao de Processos e Execucao Penal
+    2. Progressao e Regresso de Regime
+    3. Compliance e Alertas Automaticos
+    4. Analise de Risco e Reincidencia
+    5. Distribuicao e Fila de Trabalho
+    6. Precedentes e Jurisprudencia
+    7. Documentos e Assinatura Digital
+    8. Relatorios e Auditoria
+    9. Integracoes Externas
+    10. Apoio as Vitimas
+    11. Modo Endurecido (Crimes Hediondos)
+    12. Acao Humana (HITL)
+    
+  version: 1.0.0
+  contact:
+    name: IABS-SIP Support
+    email: suporte@iabs-sip.gov.br
+    
+servers:
+  - url: https://api.penajusta.cnj.jus.br/v1
+    description: Producao CNJ
+  - url: https://api-homolog.penajusta.cnj.jus.br/v1
+    description: Homologacao
+  - url: http://localhost:3001/v1
+    description: Desenvolvimento Local
+
+tags:
+  - name: Processos
+    description: Gestao de processos de execucao penal
+  - name: Apenados
+    description: Dados de sentenciados
+  - name: Progressao
+    description: Progressao e regressao de regime
+  - name: Compliance
+    description: Alertas e conformidade
+  - name: Risco
+    description: Analise de risco e reincidencia
+  - name: Distribuicao
+    description: Fila de trabalho e delegacao
+  - name: Precedentes
+    description: Jurisprudencia e casos similares
+  - name: Documentos
+    description: Autos e assinatura digital
+  - name: Relatorios
+    description: Estatisticas e auditoria
+  - name: Integracoes
+    description: Sistemas externos (BNMP, SISBAJUD, ONU)
+  - name: Vitimas
+    description: Apoio e reparacao
+  - name: Ponto11
+    description: Modo Endurecido
+  - name: HITL
+    description: Acao Humana
+
+paths:
+  # ==================== EIXO 1: PROCESSOS ====================
+  /processos:
+    get:
+      tags: [Processos]
+      summary: Listar processos de execucao penal
+      description: Retorna lista paginada de processos atribuidos ao magistrado
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+            maximum: 100
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [pendente, em_analise, julgado, arquivado]
+        - name: prioridade
+          in: query
+          schema:
+            type: string
+            enum: [alta, media, baixa]
+        - name: tipo
+          in: query
+          schema:
+            type: string
+            enum: [progressao, regressao, livramento, remicao, saida_temporaria]
+      responses:
+        '200':
+          description: Lista de processos
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProcessoListResponse'
+      security:
+        - bearerAuth: []
+        - icpAuth: []
+
+    post:
+      tags: [Processos]
+      summary: Criar novo processo
+      description: Abre novo processo de execucao penal
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProcessoCreate'
+      responses:
+        '201':
+          description: Processo criado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Processo'
+      security:
+        - bearerAuth: []
+        - icpAuth: []
+
+  /processos/{id}:
+    get:
+      tags: [Processos]
+      summary: Detalhar processo
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Detalhes do processo
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Processo'
+        '404':
+          description: Processo nao encontrado
+      security:
+        - bearerAuth: []
+
+    patch:
+      tags: [Processos]
+      summary: Atualizar classificacao
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                tipo:
+                  type: string
+                materia:
+                  type: string
+                prioridade:
+                  type: string
+      responses:
+        '200':
+          description: Processo atualizado
+      security:
+        - bearerAuth: []
+        - icpAuth: []
+
+  /processos/{id}/movimentacoes:
+    get:
+      tags: [Processos]
+      summary: Historico de movimentacoes
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Timeline de eventos
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Movimentacao'
+      security:
+        - bearerAuth: []
+
+  # ==================== EIXO 2: APENADOS ====================
+  /apenados/{cpf}:
+    get:
+      tags: [Apenados]
+      summary: Consultar apenado por CPF
+      parameters:
+        - name: cpf
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^\d{3}\.\d{3}\.\d{3}-\d{2}$'
+      responses:
+        '200':
+          description: Dados do sentenciado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Apenado'
+        '404':
+          description: Apenado nao encontrado
+      security:
+        - bearerAuth: []
+
+  /apenados/{id}/comportamento:
+    get:
+      tags: [Apenados]
+      summary: Historico comportamental
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Historico de faltas, remicoes, trabalho, estudo
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Comportamento'
+      security:
+        - bearerAuth: []
+
+  # ==================== EIXO 3: PROGRESSAO ====================
+  /calculo/progressao:
+    post:
+      tags: [Progressao]
+      summary: Calcular requisitos para progressao
+      description: Calcula requisitos objetivos e subjetivos para progressao de regime
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CalculoProgressaoRequest'
+      responses:
+        '200':
+          description: Resultado do calculo
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CalculoProgressaoResponse'
+      security:
+        - bearerAuth: []
+
+  /progressao:
+    post:
+      tags: [Progressao]
+      summary: Solicitar progressao
+      description: Abre solicitacao de progressao de regime
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProgressaoRequest'
+      responses:
+        '201':
+          description: Solicitacao criada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Progressao'
+      security:
+        - bearerAuth: []
+        - icpAuth: []
+
+  /beneficios/{id}/validar:
+    post:
+      tags: [Progressao]
+      summary: Validar beneficio
+      description: Valida se beneficio pode ser concedido conforme regras LEP
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                tipo_beneficio:
+                  type: string
+                apenado_id:
+                  type: string
+      responses:
+        '200':
+          description: Validacao realizada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidacaoBeneficio'
+      security:
+        - bearerAuth: []
+
+  /decisoes:
+    post:
+      tags: [Progressao]
+      summary: Registrar decisao judicial
+      description: Salva decisao judicial com assinatura ICP-Brasil
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DecisaoCreate'
+      responses:
+        '201':
+          description: Decisao registrada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Decisao'
+      security:
+        - bearerAuth: []
+        - icpAuth: []
+
+  # ==================== EIXO 4: COMPLIANCE ====================
+  /alertas:
+    get:
+      tags: [Compliance]
+      summary: Listar alertas de conformidade
+      description: Alertas de ilegalidade e beneficios vencidos
+      parameters:
+        - name: tipo
+          in: query
+          schema:
+            type: string
+            enum: [beneficio_vencido, ilegalidade, prazo_expirado, inconsistencia]
+        - name: severidade
+          in: query
+          schema:
+            type: string
+            enum: [critica, alta, media, baixa]
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [ativo, delegado, resolvido, ignorado]
+      responses:
+        '200':
+          description: Lista de alertas
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AlertaListResponse'
+      security:
+        - bearerAuth: []
+
+  /alertas/{id}/ciencia:
+    post:
+      tags: [Compliance]
+      summary: Registrar ciencia do alerta
+      description: Magistrado registra ciencia do alerta
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                observacao:
+                  type: string
+      responses:
+        '200':
+          description: Ciencia registrada
+      security:
+        - bearerAuth: []
+        - icpAuth: []
+
+  /alertas/{id}/delegar:
+    post:
+      tags: [Compliance]
+      summary: Delegar alerta
+      description: Encaminha alerta para analista
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [analista_id]
+              properties:
+                analista_id:
+                  type: string
+                prazo_dias:
+                  type: integer
+                  default: 5
+                instrucoes:
+                  type: string
+      responses:
+        '200':
+          description: Alerta delegado
+      security:
+        - bearerAuth: []
+
+  /legislacao/buscar:
+    get:
+      tags: [Compliance]
+      summary: Consultar legislacao
+      description: Busca norma no Planalto/Vade Mecum
+      parameters:
+        - name: termo
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: fonte
+          in: query
+          schema:
+            type: string
+            enum: [planalto, vade_mecum, stf, stj]
+      responses:
+        '200':
+          description: Resultado da busca
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LegislacaoResponse'
+      security:
+        - bearerAuth: []
+
+  # ==================== EIXO 5: RISCO ====================
+  /risco/{inmateId}:
+    get:
+      tags: [Risco]
+      summary: Calcular risco de reincidencia
+      description: Score de risco de reincidencia via IA
+      parameters:
+        - name: inmateId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Analise de risco
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnaliseRisco'
+      security:
+        - bearerAuth: []
+
+  /risco/{inmateId}/fatores:
+    get:
+      tags: [Risco]
+      summary: Detalhar fatores de risco
+      parameters:
+        - name: inmateId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Detalhamento dos fatores ponderados
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/FatorRisco'
+      security:
+        - bearerAuth: []
+
+  /inteligencia/vinculos/{cpf}:
+    get:
+      tags: [Risco]
+      summary: Vinculos com organizacoes criminosas
+      parameters:
+        - name: cpf
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Vinculos identificados
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VinculosCriminosos'
+      security:
+        - bearerAuth: []
+
+  # ==================== EIXO 6: DISTRIBUICAO ====================
+  /fila/meus-casos:
+    get:
+      tags: [Distribuicao]
+      summary: Minha fila de trabalho
+      description: Casos atribuidos ao usuario logado
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [pendente, em_analise, aguardando_assinatura]
+      responses:
+        '200':
+          description: Fila de trabalho
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FilaTrabalho'
+      security:
+        - bearerAuth: []
+
+  /fila/{taskId}/prioridade:
+    patch:
+      tags: [Distribuicao]
+      summary: Alterar prioridade
+      parameters:
+        - name: taskId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [prioridade]
+              properties:
+                prioridade:
+                  type: string
+                  enum: [alta, media, baixa]
+                motivo:
+                  type: string
+      responses:
+        '200':
+          description: Prioridade alterada
+      security:
+        - bearerAuth: []
+
+  /fila/{taskId}/delegar:
+    post:
+      tags: [Distribuicao]
+      summary: Delegar caso
+      parameters:
+        - name: taskId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [destinatario_id]
+              properties:
+                destinatario_id:
+                  type: string
+                prazo_dias:
+                  type: integer
+      responses:
+        '200':
+          description: Caso delegado
+      security:
+        - bearerAuth: []
+
+  /fila/estatisticas:
+    get:
+      tags: [Distribuicao]
+      summary: Estatisticas da fila
+      responses:
+        '200':
+          description: Metricas de produtividade
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EstatisticasFila'
+      security:
+        - bearerAuth: []
+
+  /equipe/disponibilidade:
+    get:
+      tags: [Distribuicao]
+      summary: Disponibilidade da equipe
+      description: Carga de trabalho dos subordinados
+      responses:
+        '200':
+          description: Lista de membros com carga
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/MembroEquipe'
+      security:
+        - bearerAuth: []
+
+  # ==================== EIXO 7: PRECEDENTES ====================
+  /jurisprudencia:
+    post:
+      tags: [Precedentes]
+      summary: Buscar precedentes
+      description: Busca em base de precedentes (STJ/STF/TJ)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BuscaJurisprudencia'
+      responses:
+        '200':
+          description: Lista de precedentes
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JurisprudenciaListResponse'
+      security:
+        - bearerAuth: []
+
+  /jurisprudencia/{id}:
+    get:
+      tags: [Precedentes]
+      summary: Detalhar precedente
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Ementa completa
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Jurisprudencia'
+      security:
+        - bearerAuth: []
+
+  /jurisprudencia/{id}/fatores:
+    get:
+      tags: [Precedentes]
+      summary: Fatores de similaridade
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Pesos usados no calculo
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/FatorSimilaridade'
+      security:
+        - bearerAuth: []
+
+  # ==================== EIXO 8: DOCUMENTOS ====================
+  /documentos/{processoId}:
+    get:
+      tags: [Documentos]
+      summary: Listar documentos do processo
+      parameters:
+        - name: processoId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Lista de autos
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Documento'
+      security:
+        - bearerAuth: []
+
+  /documentos:
+    post:
+      tags: [Documentos]
+      summary: Upload de documento
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [arquivo, processo_id]
+              properties:
+                arquivo:
+                  type: string
+                  format: binary
+                processo_id:
+                  type: string
+                tipo:
+                  type: string
+                  enum: [peticao, certidao, relatorio, decisao, outro]
+      responses:
+        '201':
+          description: Documento anexado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Documento'
+      security:
+        - bearerAuth: []
+
+  /documentos/{id}/assinar:
+    post:
+      tags: [Documentos]
+      summary: Assinar documento
+      description: Assinatura digital ICP-Brasil
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                certificado_base64:
+                  type: string
+                  description: Certificado ICP-Brasil em base64
+      responses:
+        '200':
+          description: Documento assinado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DocumentoAssinado'
+      security:
+        - bearerAuth: []
+        - icpAuth: []
+
+  /documentos/despacho:
+    post:
+      tags: [Documentos]
+      summary: Gerar minuta de despacho
+      description: Gera minuta de decisao baseada em template
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GerarDespachoRequest'
+      responses:
+        '201':
+          description: Minuta gerada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Documento'
+      security:
+        - bearerAuth: []
+
+  /documentos/{id}/pdf:
+    get:
+      tags: [Documentos]
+      summary: Download do documento
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Arquivo PDF
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+      security:
+        - bearerAuth: []
+
+  # ==================== EIXO 9: RELATORIOS ====================
+  /relatorios/dashboard:
+    get:
+      tags: [Relatorios]
+      summary: Dashboard estatistico
+      responses:
+        '200':
+          description: Metricas gerais
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DashboardStats'
+      security:
+        - bearerAuth: []
+
+  /relatorios/produtividade:
+    get:
+      tags: [Relatorios]
+      summary: Relatorio de produtividade
+      parameters:
+        - name: data_inicio
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date
+        - name: data_fim
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date
+        - name: magistrado_id
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Desempenho por magistrado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RelatorioProdutividade'
+      security:
+        - bearerAuth: []
+
+  /auditoria:
+    get:
+      tags: [Relatorios]
+      summary: Log de auditoria
+      description: Historico de acoes (blockchain)
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: tipo
+          in: query
+          schema:
+            type: string
+        - name: usuario_id
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Log de auditoria
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuditoriaLog'
+      security:
+        - bearerAuth: []
+
+  /relatorios/dossie:
+    post:
+      tags: [Relatorios]
+      summary: Exportar dossie ministerial
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GerarDossieRequest'
+      responses:
+        '200':
+          description: Dossie em PDF
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+      security:
+        - bearerAuth: []
+        - icpAuth: []
+
+  # ==================== EIXO 10: INTEGRACOES ====================
+  /integracao/bnmp/{cpf}:
+    get:
+      tags: [Integracoes]
+      summary: Consultar BNMP
+      description: Mandados de prisao
+      parameters:
+        - name: cpf
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Mandados ativos
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BNMPResponse'
+      security:
+        - bearerAuth: []
+
+  /integracao/sisbajud/{cpf}:
+    get:
+      tags: [Integracoes]
+      summary: Consultar SISBAJUD
+      description: Bloqueios financeiros
+      parameters:
+        - name: cpf
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Bloqueios ativos
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SISBAJUDResponse'
+      security:
+        - bearerAuth: []
+
+  /integracao/sisbajud/bloquear:
+    post:
+      tags: [Integracoes]
+      summary: Solicitar bloqueio SISBAJUD
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BloqueioSISBAJUDRequest'
+      responses:
+        '201':
+          description: Bloqueio solicitado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BloqueioSISBAJUD'
+      security:
+        - bearerAuth: []
+        - icpAuth: []
+
+  /integracao/sisnac:
+    get:
+      tags: [Integracoes]
+      summary: Consultar SISNAC
+      description: Informacoes do sistema nacional
+      parameters:
+        - name: cpf
+          in: query
+          schema:
+            type: string
+        - name: nome
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Dados SISNAC
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SISNACResponse'
+      security:
+        - bearerAuth: []
+
+  /integracao/onu/{nome}:
+    get:
+      tags: [Integracoes]
+      summary: Consultar ONU
+      description: Sancoes internacionais
+      parameters:
+        - name: nome
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Sancoes ONU
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ONUResponse'
+      security:
+        - bearerAuth: []
+
+  /biometria/validar:
+    post:
+      tags: [Integracoes]
+      summary: Validar biometria
+      description: Match facial/digital via ABIS
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ValidacaoBiometriaRequest'
+      responses:
+        '200':
+          description: Resultado da validacao
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidacaoBiometriaResponse'
+      security:
+        - bearerAuth: []
+
+  # ==================== EIXO 11: VITIMAS ====================
+  /vitimas/reparacoes:
+    get:
+      tags: [Vitimas]
+      summary: Listar reparacoes
+      description: Casos de redirecionamento financeiro
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [ativo, pendente, concluido]
+      responses:
+        '200':
+          description: Lista de reparacoes
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Reparacao'
+      security:
+        - bearerAuth: []
+
+  /vitimas/reparacoes/{id}:
+    get:
+      tags: [Vitimas]
+      summary: Detalhar fluxo de reparacao
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Status do repasse
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReparacaoDetalhe'
+      security:
+        - bearerAuth: []
+
+  /vitimas/portal/validar:
+    post:
+      tags: [Vitimas]
+      summary: Validar token do portal
+      description: Valida token de acesso do familiar
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token]
+              properties:
+                token:
+                  type: string
+                  minLength: 6
+                  maxLength: 6
+      responses:
+        '200':
+          description: Token valido
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PortalVitimaAccess'
+        '401':
+          description: Token invalido ou expirado
+      security: []
+
+  /vitimas/{id}/extrato:
+    get:
+      tags: [Vitimas]
+      summary: Extrato de repasses
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Historico de pagamentos
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Repasse'
+      security:
+        - bearerAuth: []
+
+  # ==================== EIXO 12: PONTO 11 ====================
+  /apenados/{cpf}/ponto11:
+    get:
+      tags: [Ponto11]
+      summary: Verificar Ponto 11
+      description: Verifica se aplica bloqueio de progressao
+      parameters:
+        - name: cpf
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Status Ponto 11
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Ponto11Status'
+      security:
+        - bearerAuth: []
+
+  /ponto11/excecao:
+    post:
+      tags: [Ponto11]
+      summary: Solicitar excecao
+      description: Requer autorizacao dual-key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ExcecaoPonto11Request'
+      responses:
+        '201':
+          description: Solicitacao criada (aguarda segunda assinatura)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExcecaoPonto11'
+      security:
+        - bearerAuth: []
+        - icpAuth: []
+
+  /ponto11/justificativa:
+    post:
+      tags: [Ponto11]
+      summary: Gerar justificativa IA
+      description: IA gera fundamentacao juridica
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [tipo_crime, apenado_id]
+              properties:
+                tipo_crime:
+                  type: string
+                apenado_id:
+                  type: string
+                contexto:
+                  type: string
+      responses:
+        '200':
+          description: Justificativa gerada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JustificativaIA'
+      security:
+        - bearerAuth: []
+
+  # ==================== EIXO 13: HITL ====================
+  /hitl/decisao:
+    post:
+      tags: [HITL]
+      summary: Registrar decisao HITL
+      description: Registro de decisao com validacao humana
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/HITLDecisaoRequest'
+      responses:
+        '201':
+          description: Decisao registrada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HITLDecisao'
+      security:
+        - bearerAuth: []
+        - icpAuth: []
+
+  /hitl/sandbox/validar:
+    post:
+      tags: [HITL]
+      summary: Simular impacto juridico
+      description: Sandbox de conformidade
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SandboxValidacaoRequest'
+      responses:
+        '200':
+          description: Resultado da simulacao
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SandboxValidacaoResponse'
+      security:
+        - bearerAuth: []
+
+  /hitl/biometria:
+    post:
+      tags: [HITL]
+      summary: Validar operador
+      description: Validacao ICP-Brasil do operador
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [operador_id, certificado]
+              properties:
+                operador_id:
+                  type: string
+                certificado:
+                  type: string
+                  description: Certificado digital em base64
+      responses:
+        '200':
+          description: Operador validado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OperadorValidado'
+      security:
+        - bearerAuth: []
+
+components:
+  schemas:
+    # === SCHEMAS BASICOS ====
+    Processo:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        numero:
+          type: string
+        apenado:
+          $ref: '#/components/schemas/Apenado'
+        tipo:
+          type: string
+          enum: [progressao, regressao, livramento, remicao, saida_temporaria]
+        materia:
+          type: string
+        prioridade:
+          type: string
+          enum: [alta, media, baixa]
+        status:
+          type: string
+          enum: [pendente, em_analise, julgado, arquivado]
+        data_entrada:
+          type: string
+          format: date-time
+        data_limite:
+          type: string
+          format: date
+        is_ponto11:
+          type: boolean
+        similaridade:
+          type: array
+          items:
+            $ref: '#/components/schemas/CasoSimilar'
+        documentos:
+          type: array
+          items:
+            $ref: '#/components/schemas/Documento'
+
+    ProcessoListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Processo'
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+
+    ProcessoCreate:
+      type: object
+      required: [apenado_cpf, tipo]
+      properties:
+        apenado_cpf:
+          type: string
+        tipo:
+          type: string
+        materia:
+          type: string
+        prioridade:
+          type: string
+
+    Apenado:
+      type: object
+      properties:
+        id:
+          type: string
+        nome:
+          type: string
+        cpf:
+          type: string
+        data_nascimento:
+          type: string
+          format: date
+        nome_mae:
+          type: string
+        foto_url:
+          type: string
+          format: uri
+        biometria_status:
+          type: string
+          enum: [confirmed, pending, not_found]
+        unidade:
+          type: string
+        regime:
+          type: string
+          enum: [fechado, semiaberto, aberto]
+        pena_total:
+          type: string
+        pena_cumprida:
+          type: string
+
+    Movimentacao:
+      type: object
+      properties:
+        id:
+          type: string
+        data:
+          type: string
+          format: date-time
+        tipo:
+          type: string
+        descricao:
+          type: string
+        origem:
+          type: string
+        hash_icp:
+          type: string
+
+    # === SCHEMAS PROGRESSAO ====
+    CalculoProgressaoRequest:
+      type: object
+      required: [apenado_id]
+      properties:
+        apenado_id:
+          type: string
+        tipo_beneficio:
+          type: string
+
+    CalculoProgressaoResponse:
+      type: object
+      properties:
+        apenado_id:
+          type: string
+        requisitos_objetivos:
+          type: object
+          properties:
+            tempo_cumprido:
+              type: string
+            fracao_exigida:
+              type: string
+            dias_remitidos:
+              type: integer
+            apto:
+              type: boolean
+        requisitos_subjetivos:
+          type: object
+          properties:
+            comportamento:
+              type: string
+            faltas_graves:
+              type: integer
+            apto:
+              type: boolean
+        bloqueios:
+          type: array
+          items:
+            type: string
+
+    ProgressaoRequest:
+      type: object
+      required: [processo_id, tipo]
+      properties:
+        processo_id:
+          type: string
+        tipo:
+          type: string
+        fundamentacao:
+          type: string
+
+    Progressao:
+      type: object
+      properties:
+        id:
+          type: string
+        processo_id:
+          type: string
+        tipo:
+          type: string
+        status:
+          type: string
+        data_solicitacao:
+          type: string
+          format: date-time
+
+    ValidacaoBeneficio:
+      type: object
+      properties:
+        beneficio_id:
+          type: string
+        valido:
+          type: boolean
+        bloqueios:
+          type: array
+          items:
+            type: string
+        alertas:
+          type: array
+          items:
+            type: string
+
+    DecisaoCreate:
+      type: object
+      required: [processo_id, decisao, fundamentacao]
+      properties:
+        processo_id:
+          type: string
+        decisao:
+          type: string
+          enum: [deferido, indeferido, parcialmente_deferido, arquivado]
+        fundamentacao:
+          type: string
+        tipo_documento:
+          type: string
+
+    Decisao:
+      type: object
+      properties:
+        id:
+          type: string
+        processo_id:
+          type: string
+        decisao:
+          type: string
+        fundamentacao:
+          type: string
+        assinatura_icp:
+          type: string
+        data_assinatura:
+          type: string
+          format: date-time
+        operador:
+          type: string
+
+    # === SCHEMAS COMPLIANCE ====
+    AlertaListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Alerta'
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+
+    Alerta:
+      type: object
+      properties:
+        id:
+          type: string
+        tipo:
+          type: string
+          enum: [beneficio_vencido, ilegalidade, prazo_expirado, inconsistencia]
+        severidade:
+          type: string
+          enum: [critica, alta, media, baixa]
+        titulo:
+          type: string
+        descricao:
+          type: string
+        processo_id:
+          type: string
+        apenado_nome:
+          type: string
+        status:
+          type: string
+        data_criacao:
+          type: string
+          format: date-time
+        prazo_limite:
+          type: string
+          format: date
+
+    LegislacaoResponse:
+      type: object
+      properties:
+        termo:
+          type: string
+        resultados:
+          type: array
+          items:
+            type: object
+            properties:
+              titulo:
+                type: string
+              fonte:
+                type: string
+              url:
+                type: string
+              trecho:
+                type: string
+
+    # === SCHEMAS RISCO ====
+    AnaliseRisco:
+      type: object
+      properties:
+        apenado_id:
+          type: string
+        score:
+          type: integer
+          minimum: 0
+          maximum: 100
+        nivel:
+          type: string
+          enum: [baixo, medio, alto, critico]
+        fatores:
+          type: array
+          items:
+            $ref: '#/components/schemas/FatorRisco'
+        red_flags:
+          type: array
+          items:
+            type: string
+        recomendacao:
+          type: string
+
+    FatorRisco:
+      type: object
+      properties:
+        nome:
+          type: string
+        valor:
+          type: integer
+        peso:
+          type: integer
+        descricao:
+          type: string
+
+    VinculosCriminosos:
+      type: object
+      properties:
+        apenado_cpf:
+          type: string
+        vinculos:
+          type: array
+          items:
+            type: object
+            properties:
+              organizacao:
+                type: string
+              nivel:
+                type: string
+              status:
+                type: string
+              confianca:
+                type: integer
+
+    # === SCHEMAS DISTRIBUICAO ====
+    FilaTrabalho:
+      type: object
+      properties:
+        tarefas:
+          type: array
+          items:
+            $ref: '#/components/schemas/Tarefa'
+        total:
+          type: integer
+        pendentes:
+          type: integer
+
+    Tarefa:
+      type: object
+      properties:
+        id:
+          type: string
+        processo:
+          $ref: '#/components/schemas/Processo'
+        prioridade:
+          type: string
+        status:
+          type: string
+        data_entrada:
+          type: string
+          format: date-time
+        prazo:
+          type: string
+          format: date
+        delegado_para:
+          type: string
+
+    EstatisticasFila:
+      type: object
+      properties:
+        total_concluidos:
+          type: integer
+        media_tempo_decisao:
+          type: integer
+          description: Em dias
+        taxa_deferimento:
+          type: number
+        alertas_criticos:
+          type: integer
+
+    MembroEquipe:
+      type: object
+      properties:
+        id:
+          type: string
+        nome:
+          type: string
+        papel:
+          type: string
+        carga_trabalho:
+          type: integer
+          description: Percentual de 0 a 100
+        casos_ativos:
+          type: integer
+        disponivel:
+          type: boolean
+
+    # === SCHEMAS JURISPRUDENCIA ====
+    BuscaJurisprudencia:
+      type: object
+      required: [termo]
+      properties:
+        termo:
+          type: string
+        tribunal:
+          type: string
+          enum: [stf, stj, tj, trf]
+        tipo_crime:
+          type: string
+        pena_minima:
+          type: integer
+        pena_maxima:
+          type: integer
+
+    JurisprudenciaListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Jurisprudencia'
+        total:
+          type: integer
+
+    Jurisprudencia:
+      type: object
+      properties:
+        id:
+          type: string
+        numero_processo:
+          type: string
+        tribunal:
+          type: string
+        relator:
+          type: string
+        ementa:
+          type: string
+        decisao:
+          type: string
+        data_julgamento:
+          type: string
+          format: date
+        similaridade:
+          type: integer
+        url:
+          type: string
+
+    FatorSimilaridade:
+      type: object
+      properties:
+        nome:
+          type: string
+        peso:
+          type: integer
+        match:
+          type: boolean
+
+    # === SCHEMAS DOCUMENTOS ====
+    Documento:
+      type: object
+      properties:
+        id:
+          type: string
+        processo_id:
+          type: string
+        titulo:
+          type: string
+        tipo:
+          type: string
+        data_criacao:
+          type: string
+          format: date-time
+        paginas:
+          type: integer
+        assinado:
+          type: boolean
+        assinado_por:
+          type: string
+        url:
+          type: string
+
+    DocumentoAssinado:
+      type: object
+      properties:
+        id:
+          type: string
+        hash_assinatura:
+          type: string
+        data_assinatura:
+          type: string
+          format: date-time
+        certificado_dn:
+          type: string
+
+    GerarDespachoRequest:
+      type: object
+      required: [processo_id, tipo_decisao]
+      properties:
+        processo_id:
+          type: string
+        tipo_decisao:
+          type: string
+        fundamentacao_adicional:
+          type: string
+        template:
+          type: string
+
+    # === SCHEMAS RELATORIOS ====
+    DashboardStats:
+      type: object
+      properties:
+        total_apenados:
+          type: integer
+        alertas_criticos:
+          type: integer
+        beneficios_vencidos:
+          type: integer
+        aguardando_hitl:
+          type: integer
+        processos_mes:
+          type: integer
+
+    RelatorioProdutividade:
+      type: object
+      properties:
+        periodo:
+          type: object
+          properties:
+            inicio:
+              type: string
+            fim:
+              type: string
+        magistrados:
+          type: array
+          items:
+            type: object
+            properties:
+              nome:
+                type: string
+              total_decisoes:
+                type: integer
+              media_tempo:
+                type: number
+              taxa_deferimento:
+                type: number
+
+    AuditoriaLog:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+              timestamp:
+                type: string
+                format: date-time
+              tipo:
+                type: string
+              usuario:
+                type: string
+              acao:
+                type: string
+              detalhes:
+                type: string
+              hash_blockchain:
+                type: string
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+
+    GerarDossieRequest:
+      type: object
+      required: [tipo]
+      properties:
+        tipo:
+          type: string
+          enum: [financeiro, ministerial, auditoria]
+        filtros:
+          type: object
+          additionalProperties: true
+
+    # === SCHEMAS INTEGRACOES ====
+    BNMPResponse:
+      type: object
+      properties:
+        cpf:
+          type: string
+        mandados:
+          type: array
+          items:
+            type: object
+            properties:
+              numero:
+                type: string
+              orgao:
+                type: string
+              crime:
+                type: string
+              data_expedicao:
+                type: string
+                format: date
+              status:
+                type: string
+
+    SISBAJUDResponse:
+      type: object
+      properties:
+        cpf:
+          type: string
+        bloqueios:
+          type: array
+          items:
+            type: object
+            properties:
+              protocolo:
+                type: string
+              valor:
+                type: string
+              instituicao:
+                type: string
+              tipo_conta:
+                type: string
+              data_bloqueio:
+                type: string
+                format: date
+              status:
+                type: string
+
+    BloqueioSISBAJUDRequest:
+      type: object
+      required: [cpf, valor, instituicao, processo_id]
+      properties:
+        cpf:
+          type: string
+        valor:
+          type: number
+        instituicao:
+          type: string
+        tipo_conta:
+          type: string
+        processo_id:
+          type: string
+        fundamentacao:
+          type: string
+
+    BloqueioSISBAJUD:
+      type: object
+      properties:
+        id:
+          type: string
+        protocolo:
+          type: string
+        status:
+          type: string
+        data_solicitacao:
+          type: string
+          format: date-time
+
+    SISNACResponse:
+      type: object
+      properties:
+        cpf:
+          type: string
+        nome:
+          type: string
+        antecedentes:
+          type: array
+          items:
+            type: object
+            properties:
+              tipo:
+                type: string
+              descricao:
+                type: string
+              data:
+                type: string
+
+    ONUResponse:
+      type: object
+      properties:
+        nome:
+          type: string
+        designacao:
+          type: string
+        resolucao:
+          type: string
+        sancoes:
+          type: array
+          items:
+            type: string
+        risco:
+          type: string
+
+    ValidacaoBiometriaRequest:
+      type: object
+      required: [apenado_id, tipo]
+      properties:
+        apenado_id:
+          type: string
+        tipo:
+          type: string
+          enum: [facial, digital, iris, multimodal]
+        imagem_base64:
+          type: string
+        template_base64:
+          type: string
+
+    ValidacaoBiometriaResponse:
+      type: object
+      properties:
+        match:
+          type: boolean
+        score:
+          type: number
+        confianca:
+          type: string
+        provider:
+          type: string
+
+    # === SCHEMAS VITIMAS ====
+    Reparacao:
+      type: object
+      properties:
+        id:
+          type: string
+        apenado_nome:
+          type: string
+        vitima_familia:
+          type: string
+        valor_total:
+          type: number
+        valor_mensal:
+          type: number
+        progresso:
+          type: integer
+        status:
+          type: string
+          enum: [ativo, pendente, concluido]
+        protocolo:
+          type: string
+
+    ReparacaoDetalhe:
+      type: object
+      properties:
+        id:
+          type: string
+        apenado:
+          type: string
+        vitima:
+          type: string
+        valor_total:
+          type: number
+        valor_mensal:
+          type: number
+        progresso:
+          type: integer
+        status:
+          type: string
+        fluxo:
+          type: array
+          items:
+            type: object
+            properties:
+              etapa:
+                type: string
+              status:
+                type: string
+              data:
+                type: string
+
+    PortalVitimaAccess:
+      type: object
+      properties:
+        token_valido:
+          type: boolean
+        familia_id:
+          type: string
+        nome_familia:
+          type: string
+        reparacoes:
+          type: array
+          items:
+            $ref: '#/components/schemas/Reparacao'
+
+    Repasse:
+      type: object
+      properties:
+        id:
+          type: string
+        data:
+          type: string
+          format: date
+        valor:
+          type: number
+        status:
+          type: string
+        instituicao:
+          type: string
+
+    # === SCHEMAS PONTO 11 ====
+    Ponto11Status:
+      type: object
+      properties:
+        apenado_cpf:
+          type: string
+        aplicavel:
+          type: boolean
+        motivo:
+          type: string
+        crime_tipo:
+          type: string
+        bloqueios:
+          type: array
+          items:
+            type: string
+        excecoes_autorizadas:
+          type: integer
+
+    ExcecaoPonto11Request:
+      type: object
+      required: [apenado_id, motivo]
+      properties:
+        apenado_id:
+          type: string
+        processo_id:
+          type: string
+        motivo:
+          type: string
+        fundamentacao:
+          type: string
+
+    ExcecaoPonto11:
+      type: object
+      properties:
+        id:
+          type: string
+        status:
+          type: string
+          enum: [aguardando_segunda_assinatura, aprovado, rejeitado]
+        assinatura1:
+          type: object
+          properties:
+            operador:
+              type: string
+            data:
+              type: string
+              format: date-time
+        assinatura2:
+          type: object
+          properties:
+            operador:
+              type: string
+            data:
+              type: string
+              format: date-time
+
+    JustificativaIA:
+      type: object
+      properties:
+        texto:
+          type: string
+        fundamentos:
+          type: array
+          items:
+            type: string
+        artigos:
+          type: array
+          items:
+            type: string
+        confianca:
+          type: number
+
+    # === SCHEMAS HITL ====
+    HITLDecisaoRequest:
+      type: object
+      required: [processo_id, decisao, fundamentacao, operador_id]
+      properties:
+        processo_id:
+          type: string
+        decisao:
+          type: string
+        fundamentacao:
+          type: string
+        operador_id:
+          type: string
+        certificado_icp:
+          type: string
+
+    HITLDecisao:
+      type: object
+      properties:
+        id:
+          type: string
+        processo_id:
+          type: string
+        decisao:
+          type: string
+        hash_assinatura:
+          type: string
+        data_registro:
+          type: string
+          format: date-time
+        validado:
+          type: boolean
+
+    SandboxValidacaoRequest:
+      type: object
+      required: [tipo_acao, apenado_id]
+      properties:
+        tipo_acao:
+          type: string
+        apenado_id:
+          type: string
+        is_ponto11:
+          type: boolean
+
+    SandboxValidacaoResponse:
+      type: object
+      properties:
+        score_conformidade:
+          type: integer
+        status:
+          type: string
+          enum: [conforme, alerta, bloqueado]
+        violacoes:
+          type: array
+          items:
+            type: object
+            properties:
+              codigo:
+                type: string
+              titulo:
+                type: string
+              descricao:
+                type: string
+              severidade:
+                type: string
+
+    OperadorValidado:
+      type: object
+      properties:
+        operador_id:
+          type: string
+        nome:
+          type: string
+        papel:
+          type: string
+        validado:
+          type: boolean
+        certificado_dn:
+          type: string
+        validade_ate:
+          type: string
+          format: date
+
+    # === SCHEMAS AUXILIARES ====
+    CasoSimilar:
+      type: object
+      properties:
+        id:
+          type: string
+        numero_processo:
+          type: string
+        pena:
+          type: string
+        crime:
+          type: string
+        decisao:
+          type: string
+        similaridade:
+          type: integer
+
+    Pagination:
+      type: object
+      properties:
+        page:
+          type: integer
+        limit:
+          type: integer
+        total:
+          type: integer
+        total_pages:
+          type: integer
+
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Token JWT do sistema Pena Justa
+
+    icpAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Certificado digital ICP-Brasil para operacoes criticas
